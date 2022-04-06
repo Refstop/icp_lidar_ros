@@ -1,7 +1,6 @@
 <launch>
     <arg name="bag_file" default="$(find icp_lidar_ros)/example/2d_lidars_scan.bag"/>
     <arg name="open_rviz" default="true"/>
-    <param name="/use_sim_time" value="true"/>
 
     <node pkg="rviz" type="rviz" name="rviz" required="true" args="-d $(find icp_lidar_ros)/rviz/icp_lidar.rviz"/>
     <node pkg="rosbag" type="play" name="player" args="-l $(arg bag_file)"/>

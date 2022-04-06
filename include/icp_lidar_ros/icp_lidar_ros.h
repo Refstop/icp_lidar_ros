@@ -26,8 +26,8 @@ class icp_lidar_ros {
     ~icp_lidar_ros() {}
     void Scan1Callback(const sensor_msgs::LaserScan::ConstPtr& msg); // reference_points
     void Scan2Callback(const sensor_msgs::LaserScan::ConstPtr& msg); // points_to_be_aligned
-    void knn_kdtree(MatrixXd reference_points, MatrixXd points_to_be_aligned);
-    double* point_based_matching(MatrixXd points_pair_a, MatrixXd points_pair_b);
+    void knn_kdtree(const MatrixXd reference_points, const MatrixXd points_to_be_aligned);
+    double* point_based_matching(const MatrixXd points_pair_a, const MatrixXd points_pair_b);
     MatrixXd icp(MatrixXd reference_points, MatrixXd points, int max_iterations=100, float distance_threshold=0.3, float convergence_translation_threshold=1e-3,
         float convergence_rotation_threshold=1e-4, int point_pairs_threshold=10, bool verbose=true);
     void run();

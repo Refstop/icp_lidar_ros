@@ -16,7 +16,7 @@ void icp_lidar_ros::Scan1Callback(const sensor_msgs::LaserScan::ConstPtr& msg) {
     range_max_ = msg->range_max;
     int row = 0;
     for(int i = 0; i < ranges.size(); i++) {
-        // if(ranges[i] == 0) continue;
+        if(ranges[i] == 0) continue;
         push_back_(reference_points, Vector2d(ranges[i]*cos(-angle_min_ - i*angle_increment_), ranges[i]*sin(-angle_min_ - i*angle_increment_)), row);
         row++;
     }
@@ -27,14 +27,9 @@ void icp_lidar_ros::Scan1Callback(const sensor_msgs::LaserScan::ConstPtr& msg) {
 void icp_lidar_ros::Scan2Callback(const sensor_msgs::LaserScan::ConstPtr& msg) {
     points_to_be_aligned.resize(1,2);
     std::vector<float> ranges = msg->ranges;
-    // angle_max_ = msg->angle_max;
-    // angle_min_ = msg->angle_min;
-    // angle_increment_ = msg->angle_increment;
-    // range_min_ = msg->range_min;
-    // range_max_ = msg->range_max;
     int row = 0;
     for(int i = 0; i < ranges.size(); i++) {
-        // if(ranges[i] == 0) continue;
+        if(ranges[i] == 0) continue;
         push_back_(points_to_be_aligned, Vector2d(ranges[i]*cos(-angle_min_ - i*angle_increment_), ranges[i]*sin(-angle_min_ - i*angle_increment_)), row);
         row++;
     }
@@ -42,7 +37,7 @@ void icp_lidar_ros::Scan2Callback(const sensor_msgs::LaserScan::ConstPtr& msg) {
     scan2 = true;
 }
 
-void icp_lidar_ros::knn_kdtree(MatrixXd reference_points, MatrixXd points_to_be_aligned) {
+void icp_lidar_ros::knn_kdtree(const MatrixXd reference_points, const MatrixXd points_to_be_aligned) {
     knncpp::KDTreeMinkowskiX<double, knncpp::EuclideanDistance<double>> kdtree(reference_points);
 
     kdtree.setBucketSize(1);
@@ -51,10 +46,9 @@ void icp_lidar_ros::knn_kdtree(MatrixXd reference_points, MatrixXd points_to_be_
     kdtree.query(points_to_be_aligned, 1, indices_, distances_);
 }
 
-double* icp_lidar_ros::point_based_matching(MatrixXd points_pair_a, MatrixXd points_pair_b) {
+double* icp_lidar_ros::point_based_matching(const MatrixXd points_pair_a, const MatrixXd points_pair_b) {
     static double xytheta[3];
     double x, y, xp, yp, x_mean = 0, y_mean = 0, xp_mean = 0, yp_mean = 0;
-    double s_x_xp = 0, s_y_yp = 0, s_x_yp = 0, s_y_xp = 0;
     int n = points_pair_a.rows();
     if(n == 0) return NULL;
     for(int i = 0; i < n; i++) {
@@ -69,15 +63,15 @@ double* icp_lidar_ros::point_based_matching(MatrixXd points_pair_a, MatrixXd poi
         x_mean += x;
         y_mean += y;
         xp_mean += xp;
-        yp_mean += yp;   
+        yp_mean += yp;
     }
-
 
     x_mean /= n;
     y_mean /= n;
     xp_mean /= n;
     yp_mean /= n;
     
+    double s_x_xp = 0, s_y_yp = 0, s_x_yp = 0, s_y_xp = 0;
     for(int i = 0; i < n; i++) {
         x = points_pair_a(i,0);
         y = points_pair_a(i,1);
@@ -102,11 +96,15 @@ MatrixXd icp_lidar_ros::icp(MatrixXd reference_points, MatrixXd points, int max_
     for(int iter_num = 0; iter_num < max_iterations; iter_num++) {
         if(verbose) cout << "------ iteration " << iter_num << " ------" << endl;
         knn_kdtree(reference_points, points);
-
+        // cout << "distances_:" << endl << distances_ << endl << endl;
+        // cout << "indices_:" << endl << indices_ << endl << endl;
+        // cout << "distances_.rows(), distances_.cols():" << endl << distances_.rows() << ',' << distances_.cols() << endl << endl;
+        // cout << "indices_.rows(), indices_.cols():" << endl << indices_.rows() << ',' << indices_.cols() << endl << endl;
         // cout << "reference_points:" << endl << reference_points << endl << endl;
         // cout << "points:" << endl << points << endl << endl;
         MatrixXd points_pair_a(1,2), points_pair_b(1,2);
         int nn_index = 0;
+
         for(int i = 0; i < distances_.size(); i++) {
             if(distances_(nn_index) < distance_threshold) {
                 push_back_(points_pair_a, points.block<2,1>(0,nn_index), nn_index);
@@ -157,19 +155,20 @@ MatrixXd icp_lidar_ros::icp(MatrixXd reference_points, MatrixXd points, int max_
 }
 
 void icp_lidar_ros::run() {
-    MatrixXd aligned_points, result_points;
+    MatrixXd aligned_points;
     sensor_msgs::LaserScan result_laserscan;
-    std::vector<float> ranges;
     ros::Rate rate(25);
     while(ros::ok()) {
         if(scan1 && scan2) {
+            cout << "Publishing aligned scan topic (/scan)"
+            int n = (angle_max_-angle_min_) / angle_increment_;
             aligned_points = icp(reference_points, points_to_be_aligned, 100, 0.3, 1e-3, 1e-4, 10, false);
-            aligned_points.transposeInPlace();
-            for(int i = 0; i < aligned_points.rows(); i++) {
-                if(aligned_points(i,0) == 0 && aligned_points(i,1) == 0) ranges.push_back(0);
-                else ranges.push_back(sqrt(pow(aligned_points(i,0), 2) + pow(aligned_points(i,1), 2)));
+            std::vector<float> ranges(n);
+            for(int i = 0; i < aligned_points.cols() ; i++) {
+                double angle = atan2(aligned_points(1,i), aligned_points(0,i));
+                int index = (-angle_min_ - angle) / angle_increment_;
+                ranges[index] = sqrt(pow(aligned_points(0,i), 2) + pow(aligned_points(1,i), 2));
             }
-            
             result_laserscan.header.frame_id = "laser1";
             result_laserscan.angle_min = angle_min_;
             result_laserscan.angle_max = angle_max_;
